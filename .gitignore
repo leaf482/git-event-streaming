@@ -1,0 +1,14 @@
+.env
+.env.production
+backups/
+
+# Go build outputs
+bin/
+dist/
+*.exe
+*.test
+coverage.out
+
+# Local editor and OS files
+.DS_Store
+Thumbs.db

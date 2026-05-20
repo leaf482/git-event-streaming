@@ -1,0 +1,25 @@
+services:
+  redpanda:
+    ports:
+      - "127.0.0.1:9092:19092"
+      - "127.0.0.1:9644:9644"
+
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  ingestor:
+    ports:
+      - "${INGESTOR_HOST_BIND:-0.0.0.0}:8080:8080"
+
+  consumer:
+    ports:
+      - "${CONSUMER_HOST_BIND:-0.0.0.0}:8081:8081"
+
+  frontend:
+    ports:
+      - "${FRONTEND_HOST_BIND:-0.0.0.0}:3000:3000"

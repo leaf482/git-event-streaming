@@ -1,266 +1,90 @@
+# Git Workflow Rules
+
+- Create small focused commits
+- Commit after each logically complete unit of work
+- Avoid large multi-purpose commits
+- Write clear operational commit messages
+- Never mix refactors with feature implementation unnecessarily
+- Keep commits easy to rollback
+- Prefer incremental infrastructure evolution
 
 ---
 
-## `workflow.md`
+# Milestone Commit And Push Rules
 
-```md
-# Workflow Rules
+When a development phase or clearly defined milestone is complete, the AI assistant should commit and push the completed work without waiting for a separate prompt.
 
-This document defines how development should be performed inside this repository.
+Before committing, the assistant must:
 
-The goal is to maintain architectural consistency, reduce unnecessary complexity, and prevent context drift during AI-assisted development.
+- run `git status` to review all changed and untracked files
+- run `git diff` to understand the exact changes being committed
+- scan for secrets or sensitive values, including tokens, passwords, private keys, credentials, and real `.env` files
+- confirm that only example placeholders are present in committed env templates
+- avoid committing local secret files such as `.env`, `.env.production`, credentials files, private keys, or generated backups
+- run the relevant verification commands for the completed milestone
 
----
+After the safety check passes, the assistant should:
 
-# Development Philosophy
+- create a focused commit with an operational commit message
+- push the current branch to the configured remote
+- report the commit hash, pushed branch, verification commands, and secret-scan result
 
-- Build incrementally
-- Prefer simple systems over clever systems
-- Keep architecture understandable
-- Avoid premature abstraction
-- Prioritize operational reliability
-- Prefer correctness before optimization
-- Avoid speculative engineering
-
----
-
-# AI Development Constraints
-
-The AI assistant must:
-
-- Read relevant files completely before modifying code
-- Understand existing architecture before implementation
-- Avoid introducing unrelated changes
-- Avoid unnecessary rewrites
-- Avoid changing working systems without justification
-- Modify only necessary components
-- Keep changes localized and incremental
+If sensitive information is detected, the assistant must stop, do not commit, do not push, and report the exact file paths that need attention.
 
 ---
 
-# Before Writing Code
+# Branching Strategy
 
-Before implementing any feature:
+- main should remain deployable
+- Use short-lived feature branches
+- Merge only after local verification
+- Avoid long-running unstable branches
 
-1. Read all relevant files
-2. Understand current architecture and data flow
-3. Explain planned changes briefly
-4. Identify affected services/modules
-5. Avoid speculative future abstractions
-6. Prefer extending existing systems over replacing them
+Suggested branch naming:
 
----
-
-# Implementation Rules
-
-## General Rules
-
-- Keep functions focused and readable
-- Prefer explicit code over overly abstract code
-- Avoid unnecessary interfaces or patterns
-- Avoid deep inheritance structures
-- Avoid premature microservices
-- Favor operational simplicity
+- feature/kafka-consumer
+- feature/aws-deployment
+- feature/redis-aggregation
+- fix/healthcheck-timeout
+- refactor/logging-cleanup
 
 ---
 
-# Distributed Systems Rules
+# Pull Request Rules
 
-The system should prioritize:
+Each PR should:
 
-- asynchronous event processing
-- idempotent consumers
-- retry-safe operations
-- observable failures
-- scalable workers
-- low coupling between components
+- focus on one architectural concern
+- explain operational impact
+- explain deployment impact
+- explain risks
+- remain reasonably small and reviewable
 
-Avoid:
-- tightly coupled service orchestration
-- synchronous chains across services
-- hidden background behavior
-- silent failure handling
+PRs should include:
 
----
-
-# Kafka Rules
-
-- Topics should have clear ownership
-- Event schemas should remain consistent
-- Consumers must tolerate duplicate delivery
-- Avoid embedding business logic inside Kafka adapters
-- Prefer explicit event payloads
+## Summary
+## Files Changed
+## Architectural Changes
+## Deployment Impact
+## Risks / Rollback Plan
+## Verification Steps
 
 ---
 
-# Redis Rules
+# Commit Message Style
 
-Redis should primarily be used for:
+Prefer concise infrastructure-oriented commits.
 
-- rankings
-- counters
-- hot aggregations
-- caching
-- low-latency reads
+Examples:
 
-Avoid:
-- storing critical long-term data only in Redis
-- overly complex Redis data models
+- add github event normalization pipeline
+- add kafka producer with structured logging
+- add redis aggregation worker
+- optimize docker compose for ec2 deployment
+- add container healthchecks and restart policies
+- implement idempotent consumer handling
 
----
-
-# PostgreSQL Rules
-
-Postgres should store:
-
-- persistent analytics
-- historical records
-- durable aggregated data
-- metadata
-
-Avoid:
-- unnecessary normalization early
-- premature optimization of schemas
-
----
-
-# Frontend Rules
-
-The frontend is an operational dashboard.
-
-Prioritize:
-- data visibility
-- real-time updates
-- responsiveness
-- clear metrics display
-
-Avoid:
-- excessive animations
-- unnecessary state complexity
-- UI-heavy architecture early
-
----
-
-# File Modification Rules
-
-- Do not rewrite entire files unnecessarily
-- Preserve existing architecture
-- Avoid unrelated formatting changes
-- Keep diffs focused and readable
-- Do not rename files without justification
-- Avoid introducing large dependencies casually
-
----
-
-# Refactoring Rules
-
-Refactoring is allowed ONLY if:
-
-- it improves clarity significantly
-- it reduces operational complexity
-- it removes duplicated logic
-- it improves reliability
-
-Do NOT refactor purely for stylistic reasons.
-
----
-
-# Error Handling Rules
-
-- Never silently swallow errors
-- Errors should be observable
-- Failures should include actionable logs
-- Prefer explicit failure handling
-- Retry logic should be bounded and visible
-
----
-
-# Logging Rules
-
-Logs should:
-
-- provide operational value
-- include contextual identifiers
-- avoid unnecessary verbosity
-- avoid leaking sensitive information
-
-Prefer structured logging when possible.
-
----
-
-# Verification Process
-
-After implementation:
-
-1. Verify project compiles
-2. Verify imports are valid
-3. Verify lint passes
-4. Verify environment variables are documented
-5. Verify Docker compatibility
-6. Verify no unrelated systems broke
-7. Verify APIs remain consistent
-8. Verify event flow still functions
-
----
-
-# Pull Request Style Changes
-
-Each implementation should aim for:
-
-- small focused changes
-- readable diffs
-- isolated features
-- minimal architectural disruption
-
-Avoid:
-- giant rewrites
-- unrelated cleanup commits
-- speculative features
-
----
-
-# Completion Report Format
-
-After completing work, provide:
-
-## Files Modified
-
-## What Changed
-
-## Why The Change Was Needed
-
-## Architectural Impact
-
-## Risks / Concerns
-
-## Remaining Work
-
----
-
-# Preferred Development Order
-
-When adding new systems:
-
-1. Event schema
-2. Kafka producer
-3. Kafka consumer
-4. Aggregation/storage
-5. API layer
-6. Frontend visualization
-7. Observability
-8. Reliability improvements
-
----
-
-# Long-Term Engineering Direction
-
-The long-term goal is to demonstrate:
-
-- distributed systems engineering
-- event-driven architecture
-- scalable backend infrastructure
-- observability
-- reliability engineering
-- operational thinking
-
-All development decisions should align with these priorities.
+Avoid vague commits like:
+- fixes
+- update stuff
+- changes
