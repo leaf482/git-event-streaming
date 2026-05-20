@@ -6,22 +6,26 @@ import { StatusBadge } from "../components/StatusBadge";
 type ServiceStatus = {
   ingestor: boolean;
   consumer: boolean;
+  grafana: boolean;
+  prometheus: boolean;
 };
 
 export default function OverviewPage() {
-  const [status, setStatus] = useState<ServiceStatus>({ ingestor: false, consumer: false });
+  const [status, setStatus] = useState<ServiceStatus>({ ingestor: false, consumer: false, grafana: false, prometheus: false });
 
   useEffect(() => {
     let active = true;
 
     async function checkStatus() {
-      const [ingestor, consumer] = await Promise.all([
+      const [ingestor, consumer, grafana, prometheus] = await Promise.all([
         fetch("/backend/ingestor/ready").then((response) => response.ok).catch(() => false),
         fetch("/backend/consumer/ready").then((response) => response.ok).catch(() => false),
+        fetch("/grafana/api/health").then((response) => response.ok).catch(() => false),
+        fetch("/prometheus/-/ready").then((response) => response.ok).catch(() => false),
       ]);
 
       if (active) {
-        setStatus({ ingestor, consumer });
+        setStatus({ ingestor, consumer, grafana, prometheus });
       }
     }
 
@@ -43,6 +47,8 @@ export default function OverviewPage() {
         <div className="grid">
           <StatusBadge healthy={status.ingestor} label="ingestor" />
           <StatusBadge healthy={status.consumer} label="consumer" />
+          <StatusBadge healthy={status.prometheus} label="prometheus" />
+          <StatusBadge healthy={status.grafana} label="grafana" />
         </div>
       </header>
 
@@ -56,6 +62,7 @@ export default function OverviewPage() {
             <div>Go consumer applies idempotent processing</div>
             <div>Redis sorted sets and recent-event list</div>
             <div>PostgreSQL historical analytics snapshots</div>
+            <div>Prometheus + Grafana observability</div>
             <div>Next.js operational dashboard over HTTP + SSE</div>
           </div>
         </div>
@@ -70,6 +77,8 @@ export default function OverviewPage() {
             <span className="pill">Realtime event processing</span>
             <span className="pill">Redis low-latency rankings</span>
             <span className="pill">PostgreSQL durable history</span>
+            <span className="pill">Prometheus metrics</span>
+            <span className="pill">Grafana dashboards</span>
             <span className="pill">SSE dashboard updates</span>
             <span className="pill">Single-node deployment path</span>
           </div>

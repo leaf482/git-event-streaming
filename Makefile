@@ -2,7 +2,7 @@ COMPOSE ?= docker compose
 COMPOSE_FILES ?= -f docker-compose.yml
 PROD_COMPOSE_FILES ?= -f docker-compose.yml -f docker-compose.prod.yml
 
-.PHONY: build up down restart logs ps test tidy frontend-install frontend-build compose-config replay prod-config prod-up prod-down prod-restart prod-logs prod-ps backup-postgres
+.PHONY: build up down restart logs ps test tidy frontend-install frontend-build compose-config replay observability-targets prod-config prod-up prod-down prod-restart prod-logs prod-ps backup-postgres
 
 build:
 	$(COMPOSE) $(COMPOSE_FILES) build
@@ -39,6 +39,9 @@ compose-config:
 
 replay:
 	$(COMPOSE) $(COMPOSE_FILES) run --rm --entrypoint /app/replay consumer
+
+observability-targets:
+	$(COMPOSE) $(COMPOSE_FILES) exec -T prometheus wget -qO- http://127.0.0.1:9090/prometheus/api/v1/targets
 
 prod-config:
 	$(COMPOSE) $(PROD_COMPOSE_FILES) --env-file .env.production config

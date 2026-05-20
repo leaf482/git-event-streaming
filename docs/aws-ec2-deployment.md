@@ -13,7 +13,9 @@ EC2 instance
   ├─ Next.js operational dashboard
   ├─ Redpanda single-node Kafka-compatible broker
   ├─ Redis
-  └─ PostgreSQL historical analytics
+  ├─ PostgreSQL historical analytics
+  ├─ Prometheus + Grafana
+  └─ Caddy reverse proxy
         ↓
 Realtime + historical API / operational dashboard
 ```
@@ -53,14 +55,15 @@ Expected total is about `$18-25/month` on `t3.small` or `$35-45/month` on `t3.me
 
 2. Security group inbound rules:
    - SSH `22` from your IP only
-   - Ingestor health `8080` from your IP only, or from `0.0.0.0/0` only for temporary testing
-   - Consumer API `8081` from your IP only, or from `0.0.0.0/0` only for temporary testing
-   - Frontend dashboard `3000` from your IP only, or route through a reverse proxy
+   - HTTP `80` from trusted sources, or public if intentionally exposing the dashboard through Caddy
+   - Ingestor health `8080` and consumer API `8081` from localhost only when Caddy is enabled
+   - Frontend dashboard `3000` from localhost only when Caddy is enabled
+   - Grafana `3001` and Prometheus `9090` from localhost only; access through Caddy or SSH tunnel
    - Do not expose PostgreSQL `5432`, Redis `6379`, Redpanda `9092`, or Redpanda admin `9644` publicly
 
 3. Optional domain setup:
    - Point an `A` record to the EC2 public IP or Elastic IP
-   - Put a reverse proxy with TLS in front of port `8080` in a later phase
+   - Replace the `:80` site block in `ops/caddy/Caddyfile` with your domain for Caddy-managed TLS
 
 ## Install Docker
 
@@ -100,6 +103,7 @@ Set at least:
 - `POSTGRES_PASSWORD` to a strong value
 - `POSTGRES_DSN` to match the PostgreSQL user/password if you change either value
 - `GITHUB_TOKEN` if you want higher GitHub API limits
+- `GRAFANA_ADMIN_PASSWORD` to a strong value
 - `INGESTOR_HOST_BIND=127.0.0.1` if using a reverse proxy on the same host
 - `CONSUMER_HOST_BIND=127.0.0.1` if using a reverse proxy on the same host
 - `FRONTEND_HOST_BIND=127.0.0.1` if using a reverse proxy on the same host
@@ -125,6 +129,9 @@ curl http://localhost:8081/api/events/recent
 curl http://localhost:8081/api/history/trending/repos
 curl http://localhost:8081/api/history/windows
 curl http://localhost:3000
+curl http://localhost/
+curl http://localhost/prometheus/-/ready
+curl http://localhost/grafana/api/health
 ```
 
 View logs:
@@ -134,6 +141,7 @@ make prod-logs
 docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production logs -f ingestor
 docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production logs -f consumer
 docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production logs -f frontend
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production logs -f prometheus grafana caddy
 ```
 
 Inspect topic metadata:
@@ -216,10 +224,17 @@ PostgreSQL logical backup:
 make backup-postgres
 ```
 
+Observability volumes:
+
+- `prometheus-data`: time-series metrics; useful but rebuildable.
+- `grafana-data`: Grafana runtime state; dashboards are provisioned from Git, but admin settings live here.
+- `caddy-data`: future TLS certificates and ACME state.
+
 Recommended baseline:
 
 - Run PostgreSQL dumps before deployments that change storage behavior.
 - Create EBS snapshots before major infrastructure changes.
+- Include Docker volumes in EBS snapshots when preserving observability history matters.
 - Copy backups off the instance with `scp` or S3 in a later phase.
 - Treat Redpanda topic data as replayable ingestion data for now; durable analytics should eventually live in PostgreSQL.
 
@@ -245,21 +260,20 @@ If PostgreSQL is temporarily unavailable, Redis realtime aggregation continues a
 
 - Restrict SSH to your IP.
 - Disable password SSH login.
-- Keep only ports `22` and optionally `8080` open in the security group.
-- Keep `8081` restricted to trusted sources until a public API/reverse proxy policy is added.
-- Keep `3000` restricted or place it behind a TLS reverse proxy for public access.
+- Keep only ports `22`, `80`, and later `443` open in the security group unless debugging.
+- Keep `8080`, `8081`, `3000`, `3001`, `9090`, `5432`, `6379`, `9092`, and `9644` private or localhost-bound.
 - Store `.env.production` only on the server and never commit it.
-- Rotate `POSTGRES_PASSWORD` and GitHub tokens if exposed.
+- Rotate `POSTGRES_PASSWORD`, `GRAFANA_ADMIN_PASSWORD`, and GitHub tokens if exposed.
 - Enable unattended security updates if acceptable for your maintenance style.
 - Keep EBS snapshots before risky updates.
 
 ## Production Deployment Checklist
 
-- `.env.production` exists and contains a strong `POSTGRES_PASSWORD`.
+- `.env.production` exists and contains strong `POSTGRES_PASSWORD` and `GRAFANA_ADMIN_PASSWORD` values.
 - `docker compose config` passes through `make prod-config`.
-- `docker ps` shows healthy Redpanda, Redis, PostgreSQL, ingestor, consumer, and frontend containers.
-- `/live`, `/ready`, `/metrics`, `/api/trending/repos`, `/api/events/recent`, historical APIs, and the dashboard respond locally.
-- Security group does not expose Redpanda, Redis, or PostgreSQL.
+- `docker ps` shows healthy Redpanda, Redis, PostgreSQL, ingestor, consumer, frontend, Prometheus, Grafana, and Caddy containers.
+- `/live`, `/ready`, `/metrics`, `/api/trending/repos`, historical APIs, dashboard, Grafana, and Prometheus respond locally.
+- Security group does not expose Redpanda, Redis, PostgreSQL, Prometheus, or Grafana directly.
 - Container logs are bounded by Docker log rotation.
 - Docker is enabled on boot.
 - A backup or EBS snapshot exists before major changes.
@@ -289,6 +303,15 @@ Check Redis:
 
 ```sh
 docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production exec redis redis-cli ping
+```
+
+Check observability:
+
+```sh
+curl http://localhost/prometheus/-/ready
+curl http://localhost/grafana/api/health
+curl "http://localhost/prometheus/api/v1/targets"
+curl -N --max-time 5 http://localhost/api/events/stream
 ```
 
 If ingestion logs show GitHub rate limits, set `GITHUB_TOKEN` in `.env.production` and restart the ingestor.

@@ -11,6 +11,9 @@ The current implementation covers the ingestion pipeline, Redis-backed realtime 
 - Go consumer service
 - Redis idempotency and trending repository aggregation
 - PostgreSQL historical analytics snapshots
+- Prometheus metrics collection
+- Grafana operational dashboards
+- Caddy reverse proxy foundation
 - basic trending repository API
 - historical repository trend APIs
 - Next.js operational dashboard
@@ -27,17 +30,17 @@ The frontend is an operational analytics dashboard, not a GitHub clone or social
 ```text
 GitHub Public Events API
         ↓
-github-events-ingestor
-        ↓
-Redpanda topic: github.events.raw.v1
+github-events-ingestor → Redpanda topic: github.events.raw.v1
         ↓
 github-events-consumer
    ├── Redis sorted sets
    └── PostgreSQL historical analytics
         ↓
-Consumer API + SSE
-        ↓
-Next.js dashboard
+Caddy reverse proxy
+   ├── Next.js dashboard + SSE
+   ├── Consumer API
+   ├── Grafana
+   └── Prometheus
 ```
 
 Redis remains the realtime hot path. PostgreSQL stores durable event metadata, hourly repository score snapshots, and aggregation windows for historical APIs and replay/backfill recovery.
@@ -49,6 +52,9 @@ cmd/ingestor        Go service entrypoint
 cmd/consumer        Kafka consumer, Redis aggregation, and read API
 cmd/replay          replay/backfill foundation worker
 frontend            Next.js operational dashboard
+ops/caddy           Caddy reverse proxy configuration
+ops/grafana         Grafana datasource and dashboard provisioning
+ops/prometheus      Prometheus scrape configuration
 internal/config     environment configuration
 internal/consumer   consumer metrics, Redis store, and API server
 internal/events     normalized event schema
@@ -128,6 +134,24 @@ make replay
 
 See `docs/postgres-analytics.md` for schema, replay, retention, and recovery details.
 
+## Observability
+
+Phase 5 adds Prometheus, Grafana, Caddy, and infrastructure exporters:
+
+- Prometheus scrapes ingestor, consumer, Redpanda, Kafka lag, Redis, PostgreSQL, and Caddy metrics.
+- Grafana provisions eight operational dashboards from `ops/grafana/dashboards`.
+- Caddy exposes the dashboard, APIs, Prometheus, and Grafana behind a single HTTP entrypoint.
+
+Local URLs:
+
+```sh
+open http://localhost/
+open http://localhost/grafana/
+open http://localhost/prometheus/
+```
+
+See `docs/observability.md` for dashboard usage, scrape targets, reverse proxy behavior, and troubleshooting.
+
 ## Configuration
 
 `.env.example` documents the supported environment variables. Docker Compose also reads a local `.env` file for variable interpolation, such as `GITHUB_TOKEN`.
@@ -146,6 +170,9 @@ Key environment variables:
 - `REPLAY_MODE`: marks replay runs in logs/metrics.
 - `IDEMPOTENCY_TTL`: TTL for processed GitHub event IDs.
 - `TRENDING_LIMIT`: maximum default repositories returned by the trending API.
+- `PROMETHEUS_RETENTION`: local Prometheus data retention, default `15d`.
+- `GRAFANA_ADMIN_PASSWORD`: Grafana admin password for production.
+- `CADDY_HTTP_HOST_BIND`: Caddy HTTP bind address.
 
 ## Running Locally
 
@@ -182,7 +209,10 @@ curl http://localhost:8081/metrics
 Dashboard:
 
 ```sh
+open http://localhost/
 open http://localhost:3000
+open http://localhost/grafana/
+open http://localhost/prometheus/
 ```
 
 Trending repositories:
@@ -193,6 +223,7 @@ curl "http://localhost:8081/api/trending/repos?limit=5"
 curl http://localhost:8081/api/events/recent
 curl http://localhost:8081/api/history/trending/repos
 curl http://localhost:8081/api/history/windows
+curl http://localhost/api/trending/repos
 ```
 
 SSE streams:
@@ -200,6 +231,7 @@ SSE streams:
 ```sh
 curl -N http://localhost:8081/api/trending/repos/stream
 curl -N http://localhost:8081/api/events/stream
+curl -N http://localhost/api/trending/repos/stream
 ```
 
 Run the frontend directly:

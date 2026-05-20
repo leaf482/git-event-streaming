@@ -27,6 +27,7 @@ type HealthResponse struct {
 
 type MetricsProvider interface {
 	Snapshot(time.Time) metrics.Snapshot
+	RecordAPIRequest(statusCode int)
 }
 
 func NewHealthServer(addr, serviceName string, metrics MetricsProvider, logger *slog.Logger) *HealthServer {
@@ -41,7 +42,7 @@ func NewHealthServer(addr, serviceName string, metrics MetricsProvider, logger *
 
 	health.server = &http.Server{
 		Addr:              addr,
-		Handler:           requestLogger(mux, logger),
+		Handler:           requestLogger(mux, logger, metrics),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -76,6 +77,12 @@ func (h *HealthServer) handleMetrics(metrics MetricsProvider) http.HandlerFunc {
 		_, _ = fmt.Fprintf(w, "# HELP github_pulse_ingestor_events_failed_total Total events that failed normalization or publishing.\n")
 		_, _ = fmt.Fprintf(w, "# TYPE github_pulse_ingestor_events_failed_total counter\n")
 		_, _ = fmt.Fprintf(w, "github_pulse_ingestor_events_failed_total %d\n", snapshot.EventsFailedTotal)
+		_, _ = fmt.Fprintf(w, "# HELP github_pulse_ingestor_api_requests_total Total ingestor API requests.\n")
+		_, _ = fmt.Fprintf(w, "# TYPE github_pulse_ingestor_api_requests_total counter\n")
+		_, _ = fmt.Fprintf(w, "github_pulse_ingestor_api_requests_total %d\n", snapshot.APIRequestsTotal)
+		_, _ = fmt.Fprintf(w, "# HELP github_pulse_ingestor_api_errors_total Total ingestor API requests that returned 5xx.\n")
+		_, _ = fmt.Fprintf(w, "# TYPE github_pulse_ingestor_api_errors_total counter\n")
+		_, _ = fmt.Fprintf(w, "github_pulse_ingestor_api_errors_total %d\n", snapshot.APIErrorsTotal)
 	}
 }
 
@@ -117,16 +124,28 @@ func (h *HealthServer) response(status, serviceName string) HealthResponse {
 	}
 }
 
-func requestLogger(next http.Handler, logger *slog.Logger) http.Handler {
+func requestLogger(next http.Handler, logger *slog.Logger, metrics MetricsProvider) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
-		next.ServeHTTP(w, r)
+		recorder := &statusRecorder{ResponseWriter: w, statusCode: http.StatusOK}
+		next.ServeHTTP(recorder, r)
+		metrics.RecordAPIRequest(recorder.statusCode)
 		if r.URL.Path == "/live" || r.URL.Path == "/ready" || r.URL.Path == "/metrics" {
 			logger.DebugContext(r.Context(), "handled operational endpoint request", "method", r.Method, "path", r.URL.Path, "duration_ms", time.Since(started).Milliseconds())
 			return
 		}
 		logger.InfoContext(r.Context(), "handled request", "method", r.Method, "path", r.URL.Path, "duration_ms", time.Since(started).Milliseconds())
 	})
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (r *statusRecorder) WriteHeader(statusCode int) {
+	r.statusCode = statusCode
+	r.ResponseWriter.WriteHeader(statusCode)
 }
 
 func writeJSON(w http.ResponseWriter, statusCode int, payload any) {

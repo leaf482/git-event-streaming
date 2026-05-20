@@ -207,8 +207,10 @@ func enqueuePersistence(event events.NormalizedEvent, persistenceQueue chan<- pe
 	}
 	select {
 	case persistenceQueue <- record:
+		metrics.SetPersistenceQueueDepth(len(persistenceQueue))
 	default:
 		metrics.RecordPersistenceDropped()
+		metrics.SetPersistenceQueueDepth(len(persistenceQueue))
 		logger.Error("postgres persistence queue full; dropping historical write", "event_id", event.EventID, "event_type", event.EventType, "repo", event.RepoName)
 	}
 }
@@ -219,6 +221,7 @@ func runPersistenceWorker(ctx context.Context, store *persistence.Store, queue <
 		case <-ctx.Done():
 			return
 		case record := <-queue:
+			metrics.SetPersistenceQueueDepth(len(queue))
 			started := time.Now()
 			persisted, err := store.PersistEvent(ctx, record)
 			if err != nil {

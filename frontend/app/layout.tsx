@@ -12,6 +12,8 @@ const navItems = [
   { href: "/trending", label: "Trending Repositories" },
   { href: "/events", label: "Live Event Stream" },
   { href: "/metrics", label: "System Metrics" },
+  { href: "/grafana/", label: "Grafana" },
+  { href: "/prometheus/", label: "Prometheus" },
 ];
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

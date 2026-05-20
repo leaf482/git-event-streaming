@@ -4,6 +4,15 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "3"
 
+x-observability-env: &observability-env
+  GF_SECURITY_ADMIN_USER: "${GRAFANA_ADMIN_USER:-admin}"
+  GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:-admin}"
+  GF_SERVER_ROOT_URL: "${GRAFANA_ROOT_URL:-%(protocol)s://%(domain)s/grafana/}"
+  GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+  GF_AUTH_ANONYMOUS_ENABLED: "${GRAFANA_ANONYMOUS_ENABLED:-true}"
+  GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
+  GF_USERS_ALLOW_SIGN_UP: "false"
+
 services:
   redpanda:
     image: redpandadata/redpanda:v24.2.10
@@ -215,7 +224,142 @@ services:
       retries: 5
       start_period: 30s
 
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: github-pulse-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}"
+      - "--web.external-url=${PROMETHEUS_EXTERNAL_URL:-/prometheus/}"
+      - "--web.route-prefix=/prometheus"
+      - "--web.enable-lifecycle"
+    ports:
+      - "${PROMETHEUS_HOST_BIND:-127.0.0.1}:9090:9090"
+    volumes:
+      - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      ingestor:
+        condition: service_healthy
+      consumer:
+        condition: service_healthy
+      redis-exporter:
+        condition: service_started
+      postgres-exporter:
+        condition: service_started
+      kafka-exporter:
+        condition: service_started
+    restart: unless-stopped
+    logging: *default-logging
+    mem_limit: ${PROMETHEUS_MEM_LIMIT:-384m}
+    cpus: ${PROMETHEUS_CPUS:-0.5}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9090/prometheus/-/ready >/dev/null"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: github-pulse-grafana
+    environment: *observability-env
+    ports:
+      - "${GRAFANA_HOST_BIND:-127.0.0.1}:3001:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./ops/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *default-logging
+    mem_limit: ${GRAFANA_MEM_LIMIT:-256m}
+    cpus: ${GRAFANA_CPUS:-0.5}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health >/dev/null"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.67.0
+    container_name: github-pulse-redis-exporter
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *default-logging
+    mem_limit: ${REDIS_EXPORTER_MEM_LIMIT:-64m}
+    cpus: ${REDIS_EXPORTER_CPUS:-0.1}
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.16.0
+    container_name: github-pulse-postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-github_pulse}:${POSTGRES_PASSWORD:-github_pulse}@postgres:5432/${POSTGRES_DB:-github_pulse}?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *default-logging
+    mem_limit: ${POSTGRES_EXPORTER_MEM_LIMIT:-64m}
+    cpus: ${POSTGRES_EXPORTER_CPUS:-0.1}
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.8.0
+    container_name: github-pulse-kafka-exporter
+    command:
+      - "--kafka.server=redpanda:9092"
+      - "--web.listen-address=:9308"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    logging: *default-logging
+    mem_limit: ${KAFKA_EXPORTER_MEM_LIMIT:-96m}
+    cpus: ${KAFKA_EXPORTER_CPUS:-0.1}
+
+  caddy:
+    image: caddy:2.8.4-alpine
+    container_name: github-pulse-caddy
+    ports:
+      - "${CADDY_HTTP_HOST_BIND:-0.0.0.0}:80:80"
+      - "${CADDY_ADMIN_HOST_BIND:-127.0.0.1}:2019:2019"
+    volumes:
+      - ./ops/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      frontend:
+        condition: service_healthy
+      grafana:
+        condition: service_healthy
+      prometheus:
+        condition: service_started
+    restart: unless-stopped
+    logging: *default-logging
+    mem_limit: ${CADDY_MEM_LIMIT:-128m}
+    cpus: ${CADDY_CPUS:-0.25}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
 volumes:
   redpanda-data:
   redis-data:
   postgres-data:
+  prometheus-data:
+  grafana-data:
+  caddy-data:
+  caddy-config:

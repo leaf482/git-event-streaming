@@ -66,7 +66,7 @@ func NewServer(addr string, store *Store, history *persistence.Store, metrics *M
 
 	s.server = &http.Server{
 		Addr:              addr,
-		Handler:           requestLogger(mux, logger),
+		Handler:           requestLogger(mux, logger, s.metrics),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -210,6 +210,21 @@ func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
 	_, _ = fmt.Fprintf(w, "# HELP github_pulse_consumer_snapshot_writes_total Total repository snapshot writes.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE github_pulse_consumer_snapshot_writes_total counter\n")
 	_, _ = fmt.Fprintf(w, "github_pulse_consumer_snapshot_writes_total %d\n", snapshot.SnapshotWritesTotal)
+	_, _ = fmt.Fprintf(w, "# HELP github_pulse_consumer_api_requests_total Total consumer API requests.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE github_pulse_consumer_api_requests_total counter\n")
+	_, _ = fmt.Fprintf(w, "github_pulse_consumer_api_requests_total %d\n", snapshot.APIRequestsTotal)
+	_, _ = fmt.Fprintf(w, "# HELP github_pulse_consumer_api_errors_total Total consumer API requests that returned 5xx.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE github_pulse_consumer_api_errors_total counter\n")
+	_, _ = fmt.Fprintf(w, "github_pulse_consumer_api_errors_total %d\n", snapshot.APIErrorsTotal)
+	_, _ = fmt.Fprintf(w, "# HELP github_pulse_consumer_sse_connections_total Total SSE stream connections accepted.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE github_pulse_consumer_sse_connections_total counter\n")
+	_, _ = fmt.Fprintf(w, "github_pulse_consumer_sse_connections_total %d\n", snapshot.SSEConnectionsTotal)
+	_, _ = fmt.Fprintf(w, "# HELP github_pulse_consumer_sse_active_connections Active SSE stream connections.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE github_pulse_consumer_sse_active_connections gauge\n")
+	_, _ = fmt.Fprintf(w, "github_pulse_consumer_sse_active_connections %d\n", snapshot.SSEActiveConnections)
+	_, _ = fmt.Fprintf(w, "# HELP github_pulse_consumer_persistence_queue_depth Current async PostgreSQL persistence queue depth.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE github_pulse_consumer_persistence_queue_depth gauge\n")
+	_, _ = fmt.Fprintf(w, "github_pulse_consumer_persistence_queue_depth %d\n", snapshot.PersistenceQueueDepth)
 }
 
 func (s *Server) handleRepoHistory(w http.ResponseWriter, r *http.Request) {
@@ -311,6 +326,8 @@ func (s *Server) streamJSON(w http.ResponseWriter, r *http.Request, eventName st
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	s.metrics.RecordSSEConnected()
+	defer s.metrics.RecordSSEDisconnected()
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
@@ -336,12 +353,30 @@ func (s *Server) streamJSON(w http.ResponseWriter, r *http.Request, eventName st
 	}
 }
 
-func requestLogger(next http.Handler, logger *slog.Logger) http.Handler {
+func requestLogger(next http.Handler, logger *slog.Logger, metrics *Metrics) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
-		next.ServeHTTP(w, r)
+		recorder := &statusRecorder{ResponseWriter: w, statusCode: http.StatusOK}
+		next.ServeHTTP(recorder, r)
+		metrics.RecordAPIRequest(recorder.statusCode)
 		logger.DebugContext(r.Context(), "handled consumer request", "method", r.Method, "path", r.URL.Path, "duration_ms", time.Since(started).Milliseconds())
 	})
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (r *statusRecorder) WriteHeader(statusCode int) {
+	r.statusCode = statusCode
+	r.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (r *statusRecorder) Flush() {
+	if flusher, ok := r.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 func writeJSON(w http.ResponseWriter, statusCode int, payload any) {

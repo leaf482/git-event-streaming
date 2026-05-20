@@ -21,6 +21,11 @@ type Metrics struct {
 	historicalQueryFailures   atomic.Uint64
 	replayOperationsTotal     atomic.Uint64
 	snapshotWritesTotal       atomic.Uint64
+	apiRequestsTotal          atomic.Uint64
+	apiErrorsTotal            atomic.Uint64
+	sseConnectionsTotal       atomic.Uint64
+	sseActiveConnections      atomic.Int64
+	persistenceQueueDepth     atomic.Int64
 }
 
 type MetricsSnapshot struct {
@@ -39,6 +44,11 @@ type MetricsSnapshot struct {
 	HistoricalQueryFailures   uint64
 	ReplayOperationsTotal     uint64
 	SnapshotWritesTotal       uint64
+	APIRequestsTotal          uint64
+	APIErrorsTotal            uint64
+	SSEConnectionsTotal       uint64
+	SSEActiveConnections      int64
+	PersistenceQueueDepth     int64
 }
 
 func NewMetrics(now time.Time) *Metrics {
@@ -94,6 +104,26 @@ func (m *Metrics) RecordReplayOperation() {
 	m.replayOperationsTotal.Add(1)
 }
 
+func (m *Metrics) RecordAPIRequest(statusCode int) {
+	m.apiRequestsTotal.Add(1)
+	if statusCode >= 500 {
+		m.apiErrorsTotal.Add(1)
+	}
+}
+
+func (m *Metrics) RecordSSEConnected() {
+	m.sseConnectionsTotal.Add(1)
+	m.sseActiveConnections.Add(1)
+}
+
+func (m *Metrics) RecordSSEDisconnected() {
+	m.sseActiveConnections.Add(-1)
+}
+
+func (m *Metrics) SetPersistenceQueueDepth(depth int) {
+	m.persistenceQueueDepth.Store(int64(depth))
+}
+
 func (m *Metrics) Snapshot(now time.Time) MetricsSnapshot {
 	return MetricsSnapshot{
 		UptimeSeconds:             now.Unix() - m.startedAtUnix,
@@ -111,5 +141,10 @@ func (m *Metrics) Snapshot(now time.Time) MetricsSnapshot {
 		HistoricalQueryFailures:   m.historicalQueryFailures.Load(),
 		ReplayOperationsTotal:     m.replayOperationsTotal.Load(),
 		SnapshotWritesTotal:       m.snapshotWritesTotal.Load(),
+		APIRequestsTotal:          m.apiRequestsTotal.Load(),
+		APIErrorsTotal:            m.apiErrorsTotal.Load(),
+		SSEConnectionsTotal:       m.sseConnectionsTotal.Load(),
+		SSEActiveConnections:      m.sseActiveConnections.Load(),
+		PersistenceQueueDepth:     m.persistenceQueueDepth.Load(),
 	}
 }

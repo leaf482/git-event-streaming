@@ -22,4 +22,17 @@ services:
 
   frontend:
     ports:
-      - "${FRONTEND_HOST_BIND:-0.0.0.0}:3000:3000"
+      - "${FRONTEND_HOST_BIND:-127.0.0.1}:3000:3000"
+
+  prometheus:
+    ports:
+      - "${PROMETHEUS_HOST_BIND:-127.0.0.1}:9090:9090"
+
+  grafana:
+    ports:
+      - "${GRAFANA_HOST_BIND:-127.0.0.1}:3001:3000"
+
+  caddy:
+    ports:
+      - "${CADDY_HTTP_HOST_BIND:-0.0.0.0}:80:80"
+      - "${CADDY_ADMIN_HOST_BIND:-127.0.0.1}:2019:2019"
