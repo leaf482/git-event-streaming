@@ -181,7 +181,10 @@ services:
       POSTGRES_ENABLED: "${POSTGRES_ENABLED:-true}"
       POSTGRES_DSN: "${POSTGRES_DSN:-postgres://github_pulse:github_pulse@postgres:5432/github_pulse?sslmode=disable}"
       PERSISTENCE_QUEUE_SIZE: "${PERSISTENCE_QUEUE_SIZE:-1000}"
+      PERSISTENCE_WORKERS: "${PERSISTENCE_WORKERS:-1}"
       REPLAY_MODE: "${REPLAY_MODE:-false}"
+      REPLAY_RATE_LIMIT: "${REPLAY_RATE_LIMIT:-0}"
+      REPLAY_MAX_MESSAGES: "${REPLAY_MAX_MESSAGES:-0}"
       IDEMPOTENCY_TTL: "${IDEMPOTENCY_TTL:-72h}"
       TRENDING_WINDOW_SIZE: "${TRENDING_WINDOW_SIZE:-5m}"
       TRENDING_WINDOW_TTL: "${TRENDING_WINDOW_TTL:-2h}"
@@ -354,6 +357,18 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+
+  k6:
+    image: grafana/k6:0.54.0
+    container_name: github-pulse-k6
+    profiles: ["tools"]
+    volumes:
+      - ./ops/k6:/scripts:ro
+    depends_on:
+      caddy:
+        condition: service_healthy
+    entrypoint: ["k6"]
+    logging: *default-logging
 
 volumes:
   redpanda-data:

@@ -139,7 +139,7 @@ See `docs/postgres-analytics.md` for schema, replay, retention, and recovery det
 Phase 5 adds Prometheus, Grafana, Caddy, and infrastructure exporters:
 
 - Prometheus scrapes ingestor, consumer, Redpanda, Kafka lag, Redis, PostgreSQL, and Caddy metrics.
-- Grafana provisions eight operational dashboards from `ops/grafana/dashboards`.
+- Grafana provisions operational dashboards from `ops/grafana/dashboards`, including performance and resilience views.
 - Caddy exposes the dashboard, APIs, Prometheus, and Grafana behind a single HTTP entrypoint.
 
 Local URLs:
@@ -151,6 +151,30 @@ open http://localhost/prometheus/
 ```
 
 See `docs/observability.md` for dashboard usage, scrape targets, reverse proxy behavior, and troubleshooting.
+
+## Benchmarking And Reliability
+
+Phase 6 adds lightweight benchmark and recovery tooling:
+
+```sh
+make bench-small
+make bench
+make k6-api
+make k6-sse
+REPLAY_MAX_MESSAGES=1000 REPLAY_RATE_LIMIT=100 make replay-bounded
+```
+
+Failure drills:
+
+```sh
+make recovery-redis
+make recovery-postgres
+make recovery-redpanda
+make recovery-consumer
+make recovery-ingestor
+```
+
+See `docs/benchmarking.md` for expected single-node limits, load test parameters, replay benchmarking, and recovery validation steps.
 
 ## Configuration
 
@@ -167,12 +191,16 @@ Key environment variables:
 - `POSTGRES_DSN`: PostgreSQL connection string used by the consumer.
 - `POSTGRES_ENABLED`: enables historical persistence and APIs, default `true`.
 - `PERSISTENCE_QUEUE_SIZE`: async PostgreSQL write queue size.
+- `PERSISTENCE_WORKERS`: async PostgreSQL persistence worker count.
 - `REPLAY_MODE`: marks replay runs in logs/metrics.
+- `REPLAY_RATE_LIMIT`: optional replay throttle in events/sec.
+- `REPLAY_MAX_MESSAGES`: optional bounded replay message limit.
 - `IDEMPOTENCY_TTL`: TTL for processed GitHub event IDs.
 - `TRENDING_LIMIT`: maximum default repositories returned by the trending API.
 - `PROMETHEUS_RETENTION`: local Prometheus data retention, default `15d`.
 - `GRAFANA_ADMIN_PASSWORD`: Grafana admin password for production.
 - `CADDY_HTTP_HOST_BIND`: Caddy HTTP bind address.
+- `BENCH_EVENTS`, `BENCH_RATE`, `BENCH_REPOS`: synthetic benchmark producer controls.
 
 ## Running Locally
 

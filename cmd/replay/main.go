@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/github-pulse/git-event-streaming/internal/config"
 	"github.com/github-pulse/git-event-streaming/internal/consumer"
@@ -65,7 +66,26 @@ func main() {
 	defer reader.Close()
 
 	logger.Info("starting replay foundation worker", "topic", cfg.KafkaTopic, "group_id", groupID)
+	var processed int
+	started := time.Now()
+	var rateTicker *time.Ticker
+	if cfg.ReplayRateLimit > 0 {
+		rateTicker = time.NewTicker(time.Second / time.Duration(cfg.ReplayRateLimit))
+		defer rateTicker.Stop()
+	}
 	for {
+		if cfg.ReplayMaxMessages > 0 && processed >= cfg.ReplayMaxMessages {
+			logger.Info("replay max messages reached", "processed", processed, "duration_ms", time.Since(started).Milliseconds())
+			return
+		}
+		if rateTicker != nil {
+			select {
+			case <-ctx.Done():
+				logger.Info("replay worker stopped")
+				return
+			case <-rateTicker.C:
+			}
+		}
 		message, err := reader.FetchMessage(ctx)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
@@ -97,7 +117,11 @@ func main() {
 			os.Exit(1)
 		}
 
+		processed++
 		logger.Debug("replayed event", "event_id", event.EventID, "repo", event.RepoName, "status", status)
+		if processed%100 == 0 {
+			logger.Info("replay progress", "processed", processed, "events_per_second", float64(processed)/time.Since(started).Seconds())
+		}
 	}
 }
 

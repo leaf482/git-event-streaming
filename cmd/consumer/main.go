@@ -69,7 +69,9 @@ func main() {
 	}
 	persistenceQueue := make(chan persistence.EventRecord, cfg.PersistenceQueueSize)
 	if historyStore != nil {
-		go runPersistenceWorker(ctx, historyStore, persistenceQueue, metrics, logger)
+		for workerID := 1; workerID <= cfg.PersistenceWorkers; workerID++ {
+			go runPersistenceWorker(ctx, historyStore, persistenceQueue, metrics, logger, workerID)
+		}
 	}
 
 	apiServer := consumer.NewServer(cfg.HTTPAddr, store, historyStore, metrics, cfg.TrendingLimit, logger)
@@ -215,7 +217,7 @@ func enqueuePersistence(event events.NormalizedEvent, persistenceQueue chan<- pe
 	}
 }
 
-func runPersistenceWorker(ctx context.Context, store *persistence.Store, queue <-chan persistence.EventRecord, metrics *consumer.Metrics, logger *slog.Logger) {
+func runPersistenceWorker(ctx context.Context, store *persistence.Store, queue <-chan persistence.EventRecord, metrics *consumer.Metrics, logger *slog.Logger, workerID int) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -226,7 +228,7 @@ func runPersistenceWorker(ctx context.Context, store *persistence.Store, queue <
 			persisted, err := store.PersistEvent(ctx, record)
 			if err != nil {
 				metrics.RecordPostgresWriteFailure()
-				logger.Error("failed to persist historical analytics", "event_id", record.Event.EventID, "repo", record.Event.RepoName, "error", err)
+				logger.Error("failed to persist historical analytics", "worker_id", workerID, "event_id", record.Event.EventID, "repo", record.Event.RepoName, "error", err)
 				continue
 			}
 			if persisted {

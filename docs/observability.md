@@ -1,6 +1,6 @@
 # Observability And Operations
 
-Phase 5 adds a single-node observability stack that stays compatible with Docker Compose and low-cost EC2 deployment.
+Phase 5 adds a single-node observability stack that stays compatible with Docker Compose and low-cost EC2 deployment. Phase 6 extends it with benchmark, latency, and resilience views.
 
 ## Architecture
 
@@ -36,6 +36,7 @@ Provisioned dashboards:
 - PostgreSQL Persistence
 - API Metrics
 - Infrastructure Health
+- Performance And Resilience
 
 Open Grafana through Caddy:
 
@@ -90,6 +91,19 @@ Key alerts to add in a future phase:
 - increasing PostgreSQL write failures
 - Redis memory near maxmemory
 - Redpanda unavailable or topic lag growing
+- p95/p99 processing latency over the expected baseline
+- persistence writes dropped above zero
+
+## Benchmark Signals
+
+During `make bench`, `make k6-api`, `make k6-sse`, or bounded replay, watch:
+
+- `github_pulse_consumer_processing_latency_seconds` for p95/p99 latency.
+- `github_pulse_consumer_persistence_queue_depth` for backpressure.
+- `github_pulse_consumer_persistence_dropped_total` for lost async persistence writes.
+- `kafka_consumergroup_lag` for consumer backlog.
+- `github_pulse_consumer_sse_active_connections` for SSE load.
+- `caddy_http_requests_total` for proxy request pressure.
 
 ## Recovery
 

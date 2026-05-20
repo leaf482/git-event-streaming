@@ -186,6 +186,16 @@ func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
 	_, _ = fmt.Fprintf(w, "# HELP github_pulse_consumer_processing_latency_seconds_total Total processing latency in seconds.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE github_pulse_consumer_processing_latency_seconds_total counter\n")
 	_, _ = fmt.Fprintf(w, "github_pulse_consumer_processing_latency_seconds_total %.6f\n", float64(snapshot.ProcessingLatencyNanos)/float64(time.Second))
+	_, _ = fmt.Fprintf(w, "# HELP github_pulse_consumer_processing_latency_seconds Processing latency histogram.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE github_pulse_consumer_processing_latency_seconds histogram\n")
+	_, _ = fmt.Fprintf(w, "github_pulse_consumer_processing_latency_seconds_bucket{le=\"0.01\"} %d\n", snapshot.ProcessingLatencyBuckets.LE10ms)
+	_, _ = fmt.Fprintf(w, "github_pulse_consumer_processing_latency_seconds_bucket{le=\"0.05\"} %d\n", snapshot.ProcessingLatencyBuckets.LE10ms+snapshot.ProcessingLatencyBuckets.LE50ms)
+	_, _ = fmt.Fprintf(w, "github_pulse_consumer_processing_latency_seconds_bucket{le=\"0.1\"} %d\n", snapshot.ProcessingLatencyBuckets.LE10ms+snapshot.ProcessingLatencyBuckets.LE50ms+snapshot.ProcessingLatencyBuckets.LE100ms)
+	_, _ = fmt.Fprintf(w, "github_pulse_consumer_processing_latency_seconds_bucket{le=\"0.5\"} %d\n", snapshot.ProcessingLatencyBuckets.LE10ms+snapshot.ProcessingLatencyBuckets.LE50ms+snapshot.ProcessingLatencyBuckets.LE100ms+snapshot.ProcessingLatencyBuckets.LE500ms)
+	_, _ = fmt.Fprintf(w, "github_pulse_consumer_processing_latency_seconds_bucket{le=\"1\"} %d\n", snapshot.ProcessingLatencyBuckets.LE10ms+snapshot.ProcessingLatencyBuckets.LE50ms+snapshot.ProcessingLatencyBuckets.LE100ms+snapshot.ProcessingLatencyBuckets.LE500ms+snapshot.ProcessingLatencyBuckets.LE1s)
+	_, _ = fmt.Fprintf(w, "github_pulse_consumer_processing_latency_seconds_bucket{le=\"+Inf\"} %d\n", snapshot.ProcessedTotal)
+	_, _ = fmt.Fprintf(w, "github_pulse_consumer_processing_latency_seconds_sum %.6f\n", float64(snapshot.ProcessingLatencyNanos)/float64(time.Second))
+	_, _ = fmt.Fprintf(w, "github_pulse_consumer_processing_latency_seconds_count %d\n", snapshot.ProcessedTotal)
 	_, _ = fmt.Fprintf(w, "# HELP github_pulse_consumer_postgres_writes_total Total successful PostgreSQL persistence writes.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE github_pulse_consumer_postgres_writes_total counter\n")
 	_, _ = fmt.Fprintf(w, "github_pulse_consumer_postgres_writes_total %d\n", snapshot.PostgresWritesTotal)
@@ -328,6 +338,7 @@ func (s *Server) streamJSON(w http.ResponseWriter, r *http.Request, eventName st
 	w.Header().Set("Connection", "keep-alive")
 	s.metrics.RecordSSEConnected()
 	defer s.metrics.RecordSSEDisconnected()
+	once := r.URL.Query().Get("once") == "true"
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
@@ -344,6 +355,9 @@ func (s *Server) streamJSON(w http.ResponseWriter, r *http.Request, eventName st
 			}
 		}
 		flusher.Flush()
+		if once {
+			return
+		}
 
 		select {
 		case <-r.Context().Done():

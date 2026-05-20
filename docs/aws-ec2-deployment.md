@@ -256,6 +256,29 @@ curl http://localhost:8081/api/history/windows
 
 If PostgreSQL is temporarily unavailable, Redis realtime aggregation continues and persistence failures are exposed through logs and metrics. After PostgreSQL recovers, run replay if the Redpanda retention window still contains the missed events.
 
+## Benchmark And Recovery Drills
+
+Start with conservative single-node tests:
+
+```sh
+make bench-small
+K6_VUS=10 K6_DURATION=30s make k6-api
+K6_VUS=5 K6_DURATION=20s make k6-sse
+REPLAY_MAX_MESSAGES=500 REPLAY_RATE_LIMIT=50 make replay-bounded
+```
+
+Recovery drills:
+
+```sh
+make recovery-redis
+make recovery-postgres
+make recovery-redpanda
+make recovery-consumer
+make recovery-ingestor
+```
+
+Expected `t3.small` starting points are roughly 50-250 synthetic events/sec and 5-25 API clients. Use `t3.medium` or reduce rates if consumer lag, persistence queue depth, Redis memory, or PostgreSQL write latency grows steadily.
+
 ## Server Hardening Checklist
 
 - Restrict SSH to your IP.

@@ -1,0 +1,487 @@
+{
+    "schemaVersion":  39,
+    "time":  {
+                 "to":  "now",
+                 "from":  "now-30m"
+             },
+    "version":  1,
+    "tags":  [
+                 "github-pulse",
+                 "phase-6",
+                 "benchmark"
+             ],
+    "panels":  [
+                   {
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "eps"
+                                                        },
+                                           "overrides":  [
+
+                                                         ]
+                                       },
+                       "id":  1,
+                       "gridPos":  {
+                                       "y":  0,
+                                       "w":  12,
+                                       "x":  0,
+                                       "h":  8
+                                   },
+                       "datasource":  {
+                                          "type":  "prometheus",
+                                          "uid":  "Prometheus"
+                                      },
+                       "title":  "Synthetic Events Published Rate",
+                       "targets":  [
+                                       {
+                                           "refId":  "A",
+                                           "expr":  "rate(github_pulse_ingestor_events_published_total[5m])"
+                                       }
+                                   ],
+                       "type":  "timeseries",
+                       "options":  {
+                                       "legend":  {
+                                                      "placement":  "bottom",
+                                                      "displayMode":  "list"
+                                                  },
+                                       "tooltip":  {
+                                                       "sort":  "none",
+                                                       "mode":  "single"
+                                                   }
+                                   }
+                   },
+                   {
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "eps"
+                                                        },
+                                           "overrides":  [
+
+                                                         ]
+                                       },
+                       "id":  2,
+                       "gridPos":  {
+                                       "y":  0,
+                                       "w":  12,
+                                       "x":  12,
+                                       "h":  8
+                                   },
+                       "datasource":  {
+                                          "type":  "prometheus",
+                                          "uid":  "Prometheus"
+                                      },
+                       "title":  "Consumer Processed Rate",
+                       "targets":  [
+                                       {
+                                           "refId":  "A",
+                                           "expr":  "rate(github_pulse_consumer_events_processed_total[5m])"
+                                       }
+                                   ],
+                       "type":  "timeseries",
+                       "options":  {
+                                       "legend":  {
+                                                      "placement":  "bottom",
+                                                      "displayMode":  "list"
+                                                  },
+                                       "tooltip":  {
+                                                       "sort":  "none",
+                                                       "mode":  "single"
+                                                   }
+                                   }
+                   },
+                   {
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "s"
+                                                        },
+                                           "overrides":  [
+
+                                                         ]
+                                       },
+                       "id":  3,
+                       "gridPos":  {
+                                       "y":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "h":  8
+                                   },
+                       "datasource":  {
+                                          "type":  "prometheus",
+                                          "uid":  "Prometheus"
+                                      },
+                       "title":  "Consumer p95 Processing Latency",
+                       "targets":  [
+                                       {
+                                           "refId":  "A",
+                                           "expr":  "histogram_quantile(0.95, rate(github_pulse_consumer_processing_latency_seconds_bucket[5m]))"
+                                       }
+                                   ],
+                       "type":  "timeseries",
+                       "options":  {
+                                       "legend":  {
+                                                      "placement":  "bottom",
+                                                      "displayMode":  "list"
+                                                  },
+                                       "tooltip":  {
+                                                       "sort":  "none",
+                                                       "mode":  "single"
+                                                   }
+                                   }
+                   },
+                   {
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "s"
+                                                        },
+                                           "overrides":  [
+
+                                                         ]
+                                       },
+                       "id":  4,
+                       "gridPos":  {
+                                       "y":  8,
+                                       "w":  12,
+                                       "x":  12,
+                                       "h":  8
+                                   },
+                       "datasource":  {
+                                          "type":  "prometheus",
+                                          "uid":  "Prometheus"
+                                      },
+                       "title":  "Consumer p99 Processing Latency",
+                       "targets":  [
+                                       {
+                                           "refId":  "A",
+                                           "expr":  "histogram_quantile(0.99, rate(github_pulse_consumer_processing_latency_seconds_bucket[5m]))"
+                                       }
+                                   ],
+                       "type":  "timeseries",
+                       "options":  {
+                                       "legend":  {
+                                                      "placement":  "bottom",
+                                                      "displayMode":  "list"
+                                                  },
+                                       "tooltip":  {
+                                                       "sort":  "none",
+                                                       "mode":  "single"
+                                                   }
+                                   }
+                   },
+                   {
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short"
+                                                        },
+                                           "overrides":  [
+
+                                                         ]
+                                       },
+                       "id":  5,
+                       "gridPos":  {
+                                       "y":  16,
+                                       "w":  12,
+                                       "x":  0,
+                                       "h":  8
+                                   },
+                       "datasource":  {
+                                          "type":  "prometheus",
+                                          "uid":  "Prometheus"
+                                      },
+                       "title":  "Persistence Queue Depth",
+                       "targets":  [
+                                       {
+                                           "refId":  "A",
+                                           "expr":  "github_pulse_consumer_persistence_queue_depth"
+                                       }
+                                   ],
+                       "type":  "timeseries",
+                       "options":  {
+                                       "legend":  {
+                                                      "placement":  "bottom",
+                                                      "displayMode":  "list"
+                                                  },
+                                       "tooltip":  {
+                                                       "sort":  "none",
+                                                       "mode":  "single"
+                                                   }
+                                   }
+                   },
+                   {
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "ops"
+                                                        },
+                                           "overrides":  [
+
+                                                         ]
+                                       },
+                       "id":  6,
+                       "gridPos":  {
+                                       "y":  16,
+                                       "w":  12,
+                                       "x":  12,
+                                       "h":  8
+                                   },
+                       "datasource":  {
+                                          "type":  "prometheus",
+                                          "uid":  "Prometheus"
+                                      },
+                       "title":  "Dropped Persistence Writes",
+                       "targets":  [
+                                       {
+                                           "refId":  "A",
+                                           "expr":  "rate(github_pulse_consumer_persistence_dropped_total[5m])"
+                                       }
+                                   ],
+                       "type":  "timeseries",
+                       "options":  {
+                                       "legend":  {
+                                                      "placement":  "bottom",
+                                                      "displayMode":  "list"
+                                                  },
+                                       "tooltip":  {
+                                                       "sort":  "none",
+                                                       "mode":  "single"
+                                                   }
+                                   }
+                   },
+                   {
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short"
+                                                        },
+                                           "overrides":  [
+
+                                                         ]
+                                       },
+                       "id":  7,
+                       "gridPos":  {
+                                       "y":  24,
+                                       "w":  12,
+                                       "x":  0,
+                                       "h":  8
+                                   },
+                       "datasource":  {
+                                          "type":  "prometheus",
+                                          "uid":  "Prometheus"
+                                      },
+                       "title":  "Kafka Consumer Lag",
+                       "targets":  [
+                                       {
+                                           "refId":  "A",
+                                           "expr":  "sum(kafka_consumergroup_lag) by (consumergroup, topic)"
+                                       }
+                                   ],
+                       "type":  "timeseries",
+                       "options":  {
+                                       "legend":  {
+                                                      "placement":  "bottom",
+                                                      "displayMode":  "list"
+                                                  },
+                                       "tooltip":  {
+                                                       "sort":  "none",
+                                                       "mode":  "single"
+                                                   }
+                                   }
+                   },
+                   {
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "ops"
+                                                        },
+                                           "overrides":  [
+
+                                                         ]
+                                       },
+                       "id":  8,
+                       "gridPos":  {
+                                       "y":  24,
+                                       "w":  12,
+                                       "x":  12,
+                                       "h":  8
+                                   },
+                       "datasource":  {
+                                          "type":  "prometheus",
+                                          "uid":  "Prometheus"
+                                      },
+                       "title":  "PostgreSQL Write Failures",
+                       "targets":  [
+                                       {
+                                           "refId":  "A",
+                                           "expr":  "rate(github_pulse_consumer_postgres_write_failures_total[5m])"
+                                       }
+                                   ],
+                       "type":  "timeseries",
+                       "options":  {
+                                       "legend":  {
+                                                      "placement":  "bottom",
+                                                      "displayMode":  "list"
+                                                  },
+                                       "tooltip":  {
+                                                       "sort":  "none",
+                                                       "mode":  "single"
+                                                   }
+                                   }
+                   },
+                   {
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "ops"
+                                                        },
+                                           "overrides":  [
+
+                                                         ]
+                                       },
+                       "id":  9,
+                       "gridPos":  {
+                                       "y":  32,
+                                       "w":  12,
+                                       "x":  0,
+                                       "h":  8
+                                   },
+                       "datasource":  {
+                                          "type":  "prometheus",
+                                          "uid":  "Prometheus"
+                                      },
+                       "title":  "PostgreSQL Write Rate",
+                       "targets":  [
+                                       {
+                                           "refId":  "A",
+                                           "expr":  "rate(github_pulse_consumer_postgres_writes_total[5m])"
+                                       }
+                                   ],
+                       "type":  "timeseries",
+                       "options":  {
+                                       "legend":  {
+                                                      "placement":  "bottom",
+                                                      "displayMode":  "list"
+                                                  },
+                                       "tooltip":  {
+                                                       "sort":  "none",
+                                                       "mode":  "single"
+                                                   }
+                                   }
+                   },
+                   {
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short"
+                                                        },
+                                           "overrides":  [
+
+                                                         ]
+                                       },
+                       "id":  10,
+                       "gridPos":  {
+                                       "y":  32,
+                                       "w":  12,
+                                       "x":  12,
+                                       "h":  8
+                                   },
+                       "datasource":  {
+                                          "type":  "prometheus",
+                                          "uid":  "Prometheus"
+                                      },
+                       "title":  "SSE Active Connections",
+                       "targets":  [
+                                       {
+                                           "refId":  "A",
+                                           "expr":  "github_pulse_consumer_sse_active_connections"
+                                       }
+                                   ],
+                       "type":  "timeseries",
+                       "options":  {
+                                       "legend":  {
+                                                      "placement":  "bottom",
+                                                      "displayMode":  "list"
+                                                  },
+                                       "tooltip":  {
+                                                       "sort":  "none",
+                                                       "mode":  "single"
+                                                   }
+                                   }
+                   },
+                   {
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "rps"
+                                                        },
+                                           "overrides":  [
+
+                                                         ]
+                                       },
+                       "id":  11,
+                       "gridPos":  {
+                                       "y":  40,
+                                       "w":  12,
+                                       "x":  0,
+                                       "h":  8
+                                   },
+                       "datasource":  {
+                                          "type":  "prometheus",
+                                          "uid":  "Prometheus"
+                                      },
+                       "title":  "API Request Rate",
+                       "targets":  [
+                                       {
+                                           "refId":  "A",
+                                           "expr":  "rate(github_pulse_consumer_api_requests_total[5m])"
+                                       }
+                                   ],
+                       "type":  "timeseries",
+                       "options":  {
+                                       "legend":  {
+                                                      "placement":  "bottom",
+                                                      "displayMode":  "list"
+                                                  },
+                                       "tooltip":  {
+                                                       "sort":  "none",
+                                                       "mode":  "single"
+                                                   }
+                                   }
+                   },
+                   {
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "rps"
+                                                        },
+                                           "overrides":  [
+
+                                                         ]
+                                       },
+                       "id":  12,
+                       "gridPos":  {
+                                       "y":  40,
+                                       "w":  12,
+                                       "x":  12,
+                                       "h":  8
+                                   },
+                       "datasource":  {
+                                          "type":  "prometheus",
+                                          "uid":  "Prometheus"
+                                      },
+                       "title":  "Caddy Request Rate",
+                       "targets":  [
+                                       {
+                                           "refId":  "A",
+                                           "expr":  "rate(caddy_http_requests_total[5m])"
+                                       }
+                                   ],
+                       "type":  "timeseries",
+                       "options":  {
+                                       "legend":  {
+                                                      "placement":  "bottom",
+                                                      "displayMode":  "list"
+                                                  },
+                                       "tooltip":  {
+                                                       "sort":  "none",
+                                                       "mode":  "single"
+                                                   }
+                                   }
+                   }
+               ],
+    "timezone":  "browser",
+    "refresh":  "5s",
+    "title":  "GitHub Pulse - Performance And Resilience",
+    "uid":  "performance-resilience"
+}

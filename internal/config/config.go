@@ -30,7 +30,10 @@ type Config struct {
 	PostgresDSN          string
 	PostgresEnabled      bool
 	PersistenceQueueSize int
+	PersistenceWorkers   int
 	ReplayMode           bool
+	ReplayRateLimit      int
+	ReplayMaxMessages    int
 	IdempotencyTTL       time.Duration
 	WindowSize           time.Duration
 	WindowTTL            time.Duration
@@ -59,7 +62,10 @@ func Load() (Config, error) {
 		PostgresDSN:          getEnv("POSTGRES_DSN", "postgres://github_pulse:github_pulse@localhost:5432/github_pulse?sslmode=disable"),
 		PostgresEnabled:      getBoolEnv("POSTGRES_ENABLED", true),
 		PersistenceQueueSize: getIntEnv("PERSISTENCE_QUEUE_SIZE", 1000),
+		PersistenceWorkers:   getIntEnv("PERSISTENCE_WORKERS", 1),
 		ReplayMode:           getBoolEnv("REPLAY_MODE", false),
+		ReplayRateLimit:      getIntEnv("REPLAY_RATE_LIMIT", 0),
+		ReplayMaxMessages:    getIntEnv("REPLAY_MAX_MESSAGES", 0),
 		IdempotencyTTL:       getDurationEnv("IDEMPOTENCY_TTL", 72*time.Hour),
 		WindowSize:           getDurationEnv("TRENDING_WINDOW_SIZE", 5*time.Minute),
 		WindowTTL:            getDurationEnv("TRENDING_WINDOW_TTL", 2*time.Hour),
@@ -114,6 +120,15 @@ func (c Config) Validate() error {
 	}
 	if c.PersistenceQueueSize <= 0 {
 		validationErrors = append(validationErrors, errors.New("PERSISTENCE_QUEUE_SIZE must be positive"))
+	}
+	if c.PersistenceWorkers <= 0 {
+		validationErrors = append(validationErrors, errors.New("PERSISTENCE_WORKERS must be positive"))
+	}
+	if c.ReplayRateLimit < 0 {
+		validationErrors = append(validationErrors, errors.New("REPLAY_RATE_LIMIT must be zero or positive"))
+	}
+	if c.ReplayMaxMessages < 0 {
+		validationErrors = append(validationErrors, errors.New("REPLAY_MAX_MESSAGES must be zero or positive"))
 	}
 
 	if len(validationErrors) > 0 {
@@ -217,7 +232,10 @@ func (c Config) SafeSummary() map[string]any {
 		"postgres_enabled":       c.PostgresEnabled,
 		"postgres_dsn_set":       c.PostgresDSN != "",
 		"persistence_queue_size": c.PersistenceQueueSize,
+		"persistence_workers":    c.PersistenceWorkers,
 		"replay_mode":            c.ReplayMode,
+		"replay_rate_limit":      c.ReplayRateLimit,
+		"replay_max_messages":    c.ReplayMaxMessages,
 		"idempotency_ttl":        c.IdempotencyTTL.String(),
 		"window_size":            c.WindowSize.String(),
 		"window_ttl":             c.WindowTTL.String(),
