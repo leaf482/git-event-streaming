@@ -216,6 +216,10 @@ func (s *Store) windowKey(eventTime time.Time) string {
 	return fmt.Sprintf("%s%d", windowKeyPrefix, bucket)
 }
 
+func EventScore(eventType string) float64 {
+	return scoreForEvent(eventType)
+}
+
 func scoreForEvent(eventType string) float64 {
 	switch eventType {
 	case "WatchEvent":

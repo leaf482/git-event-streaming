@@ -13,9 +13,9 @@ EC2 instance
   ├─ Next.js operational dashboard
   ├─ Redpanda single-node Kafka-compatible broker
   ├─ Redis
-  └─ PostgreSQL
+  └─ PostgreSQL historical analytics
         ↓
-Trending repository API / operational dashboard
+Realtime + historical API / operational dashboard
 ```
 
 Redpanda replaces the local Apache Kafka container because it keeps Kafka protocol compatibility while reducing single-node operational overhead. The Go producer still uses `KAFKA_BROKERS` and publishes to `github.events.raw.v1`.
@@ -38,6 +38,7 @@ Expected total is about `$18-25/month` on `t3.small` or `$35-45/month` on `t3.me
 
 - This is production-style, not highly available. One EC2 instance means one failure domain.
 - Redpanda, Redis, and PostgreSQL persist data in Docker volumes backed by EBS, so container restarts preserve state.
+- Redis remains the realtime ranking layer; PostgreSQL stores durable historical analytics and replay recovery state.
 - EC2 reboot recovery depends on Docker restart policies and the Docker daemon starting at boot.
 - Backups are operator-managed. Use PostgreSQL dumps and EBS snapshots before risky changes.
 - This setup is a practical stepping stone toward managed services or multi-node deployments later.
@@ -97,6 +98,7 @@ nano .env.production
 Set at least:
 
 - `POSTGRES_PASSWORD` to a strong value
+- `POSTGRES_DSN` to match the PostgreSQL user/password if you change either value
 - `GITHUB_TOKEN` if you want higher GitHub API limits
 - `INGESTOR_HOST_BIND=127.0.0.1` if using a reverse proxy on the same host
 - `CONSUMER_HOST_BIND=127.0.0.1` if using a reverse proxy on the same host
@@ -120,6 +122,8 @@ curl http://localhost:8081/ready
 curl http://localhost:8081/metrics
 curl http://localhost:8081/api/trending/repos
 curl http://localhost:8081/api/events/recent
+curl http://localhost:8081/api/history/trending/repos
+curl http://localhost:8081/api/history/windows
 curl http://localhost:3000
 ```
 
@@ -219,6 +223,24 @@ Recommended baseline:
 - Copy backups off the instance with `scp` or S3 in a later phase.
 - Treat Redpanda topic data as replayable ingestion data for now; durable analytics should eventually live in PostgreSQL.
 
+## Replay And Recovery
+
+Phase 4 includes a replay foundation for rebuilding Redis rankings and PostgreSQL snapshots from retained Redpanda topic data:
+
+```sh
+make replay
+```
+
+Use a separate replay consumer group so live consumer offsets are not disturbed. On small EC2 instances, run replay during low traffic and watch consumer metrics:
+
+```sh
+curl http://localhost:8081/metrics
+curl http://localhost:8081/api/history/trending/repos
+curl http://localhost:8081/api/history/windows
+```
+
+If PostgreSQL is temporarily unavailable, Redis realtime aggregation continues and persistence failures are exposed through logs and metrics. After PostgreSQL recovers, run replay if the Redpanda retention window still contains the missed events.
+
 ## Server Hardening Checklist
 
 - Restrict SSH to your IP.
@@ -236,7 +258,7 @@ Recommended baseline:
 - `.env.production` exists and contains a strong `POSTGRES_PASSWORD`.
 - `docker compose config` passes through `make prod-config`.
 - `docker ps` shows healthy Redpanda, Redis, PostgreSQL, ingestor, consumer, and frontend containers.
-- `/live`, `/ready`, `/metrics`, `/api/trending/repos`, `/api/events/recent`, and the dashboard respond locally.
+- `/live`, `/ready`, `/metrics`, `/api/trending/repos`, `/api/events/recent`, historical APIs, and the dashboard respond locally.
 - Security group does not expose Redpanda, Redis, or PostgreSQL.
 - Container logs are bounded by Docker log rotation.
 - Docker is enabled on boot.

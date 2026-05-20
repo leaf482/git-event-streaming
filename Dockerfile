@@ -1,4 +1,4 @@
-FROM golang:1.24-alpine AS build
+FROM golang:1.25-alpine AS build
 
 WORKDIR /src
 
@@ -7,7 +7,8 @@ RUN go mod download
 
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/ingestor ./cmd/ingestor \
-    && CGO_ENABLED=0 GOOS=linux go build -o /out/consumer ./cmd/consumer
+    && CGO_ENABLED=0 GOOS=linux go build -o /out/consumer ./cmd/consumer \
+    && CGO_ENABLED=0 GOOS=linux go build -o /out/replay ./cmd/replay
 
 FROM alpine:3.20
 
@@ -18,6 +19,7 @@ RUN apk add --no-cache ca-certificates wget \
 WORKDIR /app
 COPY --from=build /out/ingestor /app/ingestor
 COPY --from=build /out/consumer /app/consumer
+COPY --from=build /out/replay /app/replay
 
 USER app
 

@@ -2,7 +2,7 @@
 
 GitHub Pulse is a production-style distributed event analytics platform for ingesting GitHub public events and processing them through backend infrastructure.
 
-The current implementation covers the ingestion pipeline, Redis-backed realtime aggregation, and a minimal operational dashboard:
+The current implementation covers the ingestion pipeline, Redis-backed realtime aggregation, durable PostgreSQL analytics persistence, and a minimal operational dashboard:
 
 - Go ingestion service
 - GitHub Public Events API polling
@@ -10,7 +10,9 @@ The current implementation covers the ingestion pipeline, Redis-backed realtime 
 - Kafka-compatible publishing
 - Go consumer service
 - Redis idempotency and trending repository aggregation
+- PostgreSQL historical analytics snapshots
 - basic trending repository API
+- historical repository trend APIs
 - Next.js operational dashboard
 - SSE-powered trending and event stream views
 - Docker Compose infrastructure for Redpanda, Redis, and PostgreSQL
@@ -30,27 +32,29 @@ github-events-ingestor
 Redpanda topic: github.events.raw.v1
         ↓
 github-events-consumer
-        ↓
-Redis sorted sets
+   ├── Redis sorted sets
+   └── PostgreSQL historical analytics
         ↓
 Consumer API + SSE
         ↓
 Next.js dashboard
 ```
 
-PostgreSQL is provisioned for later durable analytics, but Phase 2 stores only realtime aggregation state in Redis.
+Redis remains the realtime hot path. PostgreSQL stores durable event metadata, hourly repository score snapshots, and aggregation windows for historical APIs and replay/backfill recovery.
 
 ## Project Structure
 
 ```text
 cmd/ingestor        Go service entrypoint
 cmd/consumer        Kafka consumer, Redis aggregation, and read API
+cmd/replay          replay/backfill foundation worker
 frontend            Next.js operational dashboard
 internal/config     environment configuration
 internal/consumer   consumer metrics, Redis store, and API server
 internal/events     normalized event schema
 internal/github     GitHub Public Events API client
 internal/kafka      Kafka producer
+internal/persistence PostgreSQL analytics persistence
 internal/server     health endpoints
 ```
 
@@ -99,6 +103,31 @@ Weighted scores:
 - `IssuesEvent`: `+1`
 - `CreateEvent`: `+1`
 
+## PostgreSQL Analytics
+
+The consumer persists historical analytics asynchronously after Redis processing:
+
+- `processed_event_metadata`: event ID keyed processing history.
+- `repository_score_snapshots`: per-repository hourly score snapshots.
+- `aggregation_windows`: durable window catalog.
+- `repository_hourly_summaries`: summary foundation for future retention jobs.
+
+Historical APIs:
+
+```sh
+curl http://localhost:8081/api/history/trending/repos
+curl http://localhost:8081/api/history/windows
+curl http://localhost:8081/api/history/repos/owner/repo
+```
+
+Replay/backfill foundation:
+
+```sh
+make replay
+```
+
+See `docs/postgres-analytics.md` for schema, replay, retention, and recovery details.
+
 ## Configuration
 
 `.env.example` documents the supported environment variables. Docker Compose also reads a local `.env` file for variable interpolation, such as `GITHUB_TOKEN`.
@@ -111,6 +140,10 @@ Key environment variables:
 - `KAFKA_TOPIC_GITHUB_EVENTS`: Kafka topic for normalized events.
 - `HTTP_ADDR`: health server bind address.
 - `REDIS_ADDR`: Redis address used by the consumer.
+- `POSTGRES_DSN`: PostgreSQL connection string used by the consumer.
+- `POSTGRES_ENABLED`: enables historical persistence and APIs, default `true`.
+- `PERSISTENCE_QUEUE_SIZE`: async PostgreSQL write queue size.
+- `REPLAY_MODE`: marks replay runs in logs/metrics.
 - `IDEMPOTENCY_TTL`: TTL for processed GitHub event IDs.
 - `TRENDING_LIMIT`: maximum default repositories returned by the trending API.
 
@@ -158,6 +191,8 @@ Trending repositories:
 curl http://localhost:8081/api/trending/repos
 curl "http://localhost:8081/api/trending/repos?limit=5"
 curl http://localhost:8081/api/events/recent
+curl http://localhost:8081/api/history/trending/repos
+curl http://localhost:8081/api/history/windows
 ```
 
 SSE streams:

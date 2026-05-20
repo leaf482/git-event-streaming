@@ -2,7 +2,7 @@ COMPOSE ?= docker compose
 COMPOSE_FILES ?= -f docker-compose.yml
 PROD_COMPOSE_FILES ?= -f docker-compose.yml -f docker-compose.prod.yml
 
-.PHONY: build up down restart logs ps test tidy frontend-install frontend-build compose-config prod-config prod-up prod-down prod-restart prod-logs prod-ps backup-postgres
+.PHONY: build up down restart logs ps test tidy frontend-install frontend-build compose-config replay prod-config prod-up prod-down prod-restart prod-logs prod-ps backup-postgres
 
 build:
 	$(COMPOSE) $(COMPOSE_FILES) build
@@ -36,6 +36,9 @@ frontend-build:
 
 compose-config:
 	$(COMPOSE) $(COMPOSE_FILES) config
+
+replay:
+	$(COMPOSE) $(COMPOSE_FILES) run --rm --entrypoint /app/replay consumer
 
 prod-config:
 	$(COMPOSE) $(PROD_COMPOSE_FILES) --env-file .env.production config

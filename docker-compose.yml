@@ -151,6 +151,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     ports:
       - "${CONSUMER_HOST_BIND:-0.0.0.0}:8081:8081"
     environment:
@@ -167,6 +169,10 @@ services:
       REDIS_ADDR: "${REDIS_ADDR:-redis:6379}"
       REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
       REDIS_DB: "${REDIS_DB:-0}"
+      POSTGRES_ENABLED: "${POSTGRES_ENABLED:-true}"
+      POSTGRES_DSN: "${POSTGRES_DSN:-postgres://github_pulse:github_pulse@postgres:5432/github_pulse?sslmode=disable}"
+      PERSISTENCE_QUEUE_SIZE: "${PERSISTENCE_QUEUE_SIZE:-1000}"
+      REPLAY_MODE: "${REPLAY_MODE:-false}"
       IDEMPOTENCY_TTL: "${IDEMPOTENCY_TTL:-72h}"
       TRENDING_WINDOW_SIZE: "${TRENDING_WINDOW_SIZE:-5m}"
       TRENDING_WINDOW_TTL: "${TRENDING_WINDOW_TTL:-2h}"

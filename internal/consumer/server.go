@@ -7,14 +7,18 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/github-pulse/git-event-streaming/internal/persistence"
 )
 
 type Server struct {
 	server  *http.Server
 	ready   atomic.Bool
 	store   *Store
+	history *persistence.Store
 	metrics *Metrics
 	limit   int
 }
@@ -27,9 +31,23 @@ type recentEventsResponse struct {
 	Events []RecentEvent `json:"events"`
 }
 
-func NewServer(addr string, store *Store, metrics *Metrics, limit int, logger *slog.Logger) *Server {
+type repoHistoryResponse struct {
+	RepoName string                         `json:"repo_name"`
+	Points   []persistence.RepoHistoryPoint `json:"points"`
+}
+
+type historicalTrendingResponse struct {
+	Repos []persistence.HistoricalTrend `json:"repos"`
+}
+
+type historyWindowsResponse struct {
+	Windows []persistence.AggregationWindow `json:"windows"`
+}
+
+func NewServer(addr string, store *Store, history *persistence.Store, metrics *Metrics, limit int, logger *slog.Logger) *Server {
 	s := &Server{
 		store:   store,
+		history: history,
 		metrics: metrics,
 		limit:   limit,
 	}
@@ -42,6 +60,9 @@ func NewServer(addr string, store *Store, metrics *Metrics, limit int, logger *s
 	mux.HandleFunc("/api/trending/repos/stream", s.handleTrendingReposStream)
 	mux.HandleFunc("/api/events/recent", s.handleRecentEvents)
 	mux.HandleFunc("/api/events/stream", s.handleRecentEventsStream)
+	mux.HandleFunc("/api/history/repos/", s.handleRepoHistory)
+	mux.HandleFunc("/api/history/trending/repos", s.handleHistoricalTrendingRepos)
+	mux.HandleFunc("/api/history/windows", s.handleHistoryWindows)
 
 	s.server = &http.Server{
 		Addr:              addr,
@@ -165,6 +186,103 @@ func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
 	_, _ = fmt.Fprintf(w, "# HELP github_pulse_consumer_processing_latency_seconds_total Total processing latency in seconds.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE github_pulse_consumer_processing_latency_seconds_total counter\n")
 	_, _ = fmt.Fprintf(w, "github_pulse_consumer_processing_latency_seconds_total %.6f\n", float64(snapshot.ProcessingLatencyNanos)/float64(time.Second))
+	_, _ = fmt.Fprintf(w, "# HELP github_pulse_consumer_postgres_writes_total Total successful PostgreSQL persistence writes.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE github_pulse_consumer_postgres_writes_total counter\n")
+	_, _ = fmt.Fprintf(w, "github_pulse_consumer_postgres_writes_total %d\n", snapshot.PostgresWritesTotal)
+	_, _ = fmt.Fprintf(w, "# HELP github_pulse_consumer_postgres_write_failures_total Total PostgreSQL persistence failures.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE github_pulse_consumer_postgres_write_failures_total counter\n")
+	_, _ = fmt.Fprintf(w, "github_pulse_consumer_postgres_write_failures_total %d\n", snapshot.PostgresWriteFailures)
+	_, _ = fmt.Fprintf(w, "# HELP github_pulse_consumer_postgres_write_latency_seconds_total Total PostgreSQL write latency in seconds.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE github_pulse_consumer_postgres_write_latency_seconds_total counter\n")
+	_, _ = fmt.Fprintf(w, "github_pulse_consumer_postgres_write_latency_seconds_total %.6f\n", float64(snapshot.PostgresWriteLatencyNanos)/float64(time.Second))
+	_, _ = fmt.Fprintf(w, "# HELP github_pulse_consumer_persistence_dropped_total Total events dropped from async persistence queue.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE github_pulse_consumer_persistence_dropped_total counter\n")
+	_, _ = fmt.Fprintf(w, "github_pulse_consumer_persistence_dropped_total %d\n", snapshot.PersistenceDroppedTotal)
+	_, _ = fmt.Fprintf(w, "# HELP github_pulse_consumer_historical_queries_total Total historical API queries.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE github_pulse_consumer_historical_queries_total counter\n")
+	_, _ = fmt.Fprintf(w, "github_pulse_consumer_historical_queries_total %d\n", snapshot.HistoricalQueriesTotal)
+	_, _ = fmt.Fprintf(w, "# HELP github_pulse_consumer_historical_query_failures_total Total historical API query failures.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE github_pulse_consumer_historical_query_failures_total counter\n")
+	_, _ = fmt.Fprintf(w, "github_pulse_consumer_historical_query_failures_total %d\n", snapshot.HistoricalQueryFailures)
+	_, _ = fmt.Fprintf(w, "# HELP github_pulse_consumer_replay_operations_total Total replay operations started by this service.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE github_pulse_consumer_replay_operations_total counter\n")
+	_, _ = fmt.Fprintf(w, "github_pulse_consumer_replay_operations_total %d\n", snapshot.ReplayOperationsTotal)
+	_, _ = fmt.Fprintf(w, "# HELP github_pulse_consumer_snapshot_writes_total Total repository snapshot writes.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE github_pulse_consumer_snapshot_writes_total counter\n")
+	_, _ = fmt.Fprintf(w, "github_pulse_consumer_snapshot_writes_total %d\n", snapshot.SnapshotWritesTotal)
+}
+
+func (s *Server) handleRepoHistory(w http.ResponseWriter, r *http.Request) {
+	if s.history == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "historical persistence is disabled"})
+		return
+	}
+
+	repoPath := strings.TrimPrefix(r.URL.Path, "/api/history/repos/")
+	parts := strings.SplitN(repoPath, "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "expected /api/history/repos/:owner/:repo"})
+		return
+	}
+	repoName := parts[0] + "/" + parts[1]
+	limit, ok := s.parseLimit(w, r, 48)
+	if !ok {
+		return
+	}
+
+	s.metrics.RecordHistoricalQuery()
+	points, err := s.history.RepoHistory(r.Context(), repoName, limit)
+	if err != nil {
+		s.metrics.RecordHistoricalQueryFailure()
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read repository history"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, repoHistoryResponse{RepoName: repoName, Points: points})
+}
+
+func (s *Server) handleHistoricalTrendingRepos(w http.ResponseWriter, r *http.Request) {
+	if s.history == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "historical persistence is disabled"})
+		return
+	}
+
+	limit, ok := s.parseLimit(w, r, s.limit)
+	if !ok {
+		return
+	}
+
+	s.metrics.RecordHistoricalQuery()
+	repos, err := s.history.HistoricalTrending(r.Context(), limit)
+	if err != nil {
+		s.metrics.RecordHistoricalQueryFailure()
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read historical trending repositories"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, historicalTrendingResponse{Repos: repos})
+}
+
+func (s *Server) handleHistoryWindows(w http.ResponseWriter, r *http.Request) {
+	if s.history == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "historical persistence is disabled"})
+		return
+	}
+
+	limit, ok := s.parseLimit(w, r, 24)
+	if !ok {
+		return
+	}
+
+	s.metrics.RecordHistoricalQuery()
+	windows, err := s.history.AggregationWindows(r.Context(), limit)
+	if err != nil {
+		s.metrics.RecordHistoricalQueryFailure()
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read aggregation windows"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, historyWindowsResponse{Windows: windows})
 }
 
 func (s *Server) parseLimit(w http.ResponseWriter, r *http.Request, fallback int) (int, bool) {

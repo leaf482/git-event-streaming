@@ -15,6 +15,7 @@ import (
 	"github.com/github-pulse/git-event-streaming/internal/config"
 	"github.com/github-pulse/git-event-streaming/internal/consumer"
 	"github.com/github-pulse/git-event-streaming/internal/events"
+	"github.com/github-pulse/git-event-streaming/internal/persistence"
 	"github.com/redis/go-redis/v9"
 	"github.com/segmentio/kafka-go"
 )
@@ -47,8 +48,31 @@ func main() {
 
 	store := consumer.NewStore(redisClient, cfg.IdempotencyTTL, cfg.WindowSize, cfg.WindowTTL)
 	metrics := consumer.NewMetrics(time.Now().UTC())
+	var historyStore *persistence.Store
+	if cfg.PostgresEnabled {
+		var err error
+		historyStore, err = persistence.Connect(ctx, cfg.PostgresDSN)
+		if err != nil {
+			logger.Error("postgres persistence unavailable; continuing with redis realtime processing only", "error", err)
+		} else {
+			defer historyStore.Close()
+			if err := historyStore.InitSchema(ctx); err != nil {
+				logger.Error("failed to initialize postgres schema; disabling historical persistence", "error", err)
+				historyStore.Close()
+				historyStore = nil
+			}
+		}
+	}
+	if cfg.ReplayMode {
+		metrics.RecordReplayOperation()
+		logger.Info("consumer replay mode enabled", "group_id", cfg.KafkaGroupID)
+	}
+	persistenceQueue := make(chan persistence.EventRecord, cfg.PersistenceQueueSize)
+	if historyStore != nil {
+		go runPersistenceWorker(ctx, historyStore, persistenceQueue, metrics, logger)
+	}
 
-	apiServer := consumer.NewServer(cfg.HTTPAddr, store, metrics, cfg.TrendingLimit, logger)
+	apiServer := consumer.NewServer(cfg.HTTPAddr, store, historyStore, metrics, cfg.TrendingLimit, logger)
 	serverErr := make(chan error, 1)
 	go func() {
 		logger.Info("starting consumer api server", "addr", cfg.HTTPAddr)
@@ -78,7 +102,7 @@ func main() {
 
 	consumeErr := make(chan error, 1)
 	go func() {
-		consumeErr <- runConsumer(ctx, reader, store, metrics, logger)
+		consumeErr <- runConsumer(ctx, reader, store, persistenceQueue, historyStore != nil, metrics, logger)
 	}()
 
 	select {
@@ -107,7 +131,7 @@ type messageReader interface {
 	CommitMessages(context.Context, ...kafka.Message) error
 }
 
-func runConsumer(ctx context.Context, reader messageReader, store *consumer.Store, metrics *consumer.Metrics, logger *slog.Logger) error {
+func runConsumer(ctx context.Context, reader messageReader, store *consumer.Store, persistenceQueue chan<- persistence.EventRecord, persistenceEnabled bool, metrics *consumer.Metrics, logger *slog.Logger) error {
 	for {
 		message, err := reader.FetchMessage(ctx)
 		if err != nil {
@@ -117,7 +141,7 @@ func runConsumer(ctx context.Context, reader messageReader, store *consumer.Stor
 			return err
 		}
 
-		commit, err := processMessage(ctx, message, store, metrics, logger)
+		commit, err := processMessage(ctx, message, store, persistenceQueue, persistenceEnabled, metrics, logger)
 		if err != nil {
 			logger.Error("failed to process kafka message", "topic", message.Topic, "partition", message.Partition, "offset", message.Offset, "error", err)
 			if commit {
@@ -134,7 +158,7 @@ func runConsumer(ctx context.Context, reader messageReader, store *consumer.Stor
 	}
 }
 
-func processMessage(ctx context.Context, message kafka.Message, store *consumer.Store, metrics *consumer.Metrics, logger *slog.Logger) (bool, error) {
+func processMessage(ctx context.Context, message kafka.Message, store *consumer.Store, persistenceQueue chan<- persistence.EventRecord, persistenceEnabled bool, metrics *consumer.Metrics, logger *slog.Logger) (bool, error) {
 	started := time.Now()
 	metrics.RecordConsumed()
 
@@ -158,15 +182,55 @@ func processMessage(ctx context.Context, message kafka.Message, store *consumer.
 	switch status {
 	case consumer.ProcessStatusProcessed:
 		metrics.RecordProcessed(time.Since(started))
+		enqueuePersistence(event, persistenceQueue, persistenceEnabled, metrics, logger)
 		logger.InfoContext(ctx, "processed github event", "event_id", event.EventID, "event_type", event.EventType, "repo", event.RepoName, "latency_ms", time.Since(started).Milliseconds())
 	case consumer.ProcessStatusDuplicate:
 		metrics.RecordDuplicateSkipped()
+		enqueuePersistence(event, persistenceQueue, persistenceEnabled, metrics, logger)
 		logger.DebugContext(ctx, "skipped duplicate github event", "event_id", event.EventID, "event_type", event.EventType, "repo", event.RepoName)
 	case consumer.ProcessStatusIgnored:
+		enqueuePersistence(event, persistenceQueue, persistenceEnabled, metrics, logger)
 		logger.DebugContext(ctx, "ignored unweighted github event", "event_id", event.EventID, "event_type", event.EventType, "repo", event.RepoName)
 	}
 
 	return true, nil
+}
+
+func enqueuePersistence(event events.NormalizedEvent, persistenceQueue chan<- persistence.EventRecord, persistenceEnabled bool, metrics *consumer.Metrics, logger *slog.Logger) {
+	if !persistenceEnabled {
+		return
+	}
+
+	record := persistence.EventRecord{
+		Event: event,
+		Score: consumer.EventScore(event.EventType),
+	}
+	select {
+	case persistenceQueue <- record:
+	default:
+		metrics.RecordPersistenceDropped()
+		logger.Error("postgres persistence queue full; dropping historical write", "event_id", event.EventID, "event_type", event.EventType, "repo", event.RepoName)
+	}
+}
+
+func runPersistenceWorker(ctx context.Context, store *persistence.Store, queue <-chan persistence.EventRecord, metrics *consumer.Metrics, logger *slog.Logger) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case record := <-queue:
+			started := time.Now()
+			persisted, err := store.PersistEvent(ctx, record)
+			if err != nil {
+				metrics.RecordPostgresWriteFailure()
+				logger.Error("failed to persist historical analytics", "event_id", record.Event.EventID, "repo", record.Event.RepoName, "error", err)
+				continue
+			}
+			if persisted {
+				metrics.RecordPostgresWrite(time.Since(started))
+			}
+		}
+	}
 }
 
 func parseLogLevel(level string) slog.Level {

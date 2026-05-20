@@ -55,6 +55,7 @@ export default function OverviewPage() {
             <div>Redpanda topic: github.events.raw.v1</div>
             <div>Go consumer applies idempotent processing</div>
             <div>Redis sorted sets and recent-event list</div>
+            <div>PostgreSQL historical analytics snapshots</div>
             <div>Next.js operational dashboard over HTTP + SSE</div>
           </div>
         </div>
@@ -68,6 +69,7 @@ export default function OverviewPage() {
           <div className="grid">
             <span className="pill">Realtime event processing</span>
             <span className="pill">Redis low-latency rankings</span>
+            <span className="pill">PostgreSQL durable history</span>
             <span className="pill">SSE dashboard updates</span>
             <span className="pill">Single-node deployment path</span>
           </div>
