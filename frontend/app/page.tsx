@@ -84,6 +84,24 @@ export default function OverviewPage() {
           </div>
         </div>
       </section>
+
+      <section className="grid cols-3 overview-metrics">
+        <div className="panel stat">
+          <span className="label">Realtime path</span>
+          <span className="value">Redis</span>
+          <p className="muted">Low-latency rankings, recent events, and idempotency markers keep the dashboard responsive.</p>
+        </div>
+        <div className="panel stat">
+          <span className="label">Durable path</span>
+          <span className="value">PostgreSQL</span>
+          <p className="muted">Historical windows and repository snapshots support replay, backfill, and trend APIs.</p>
+        </div>
+        <div className="panel stat">
+          <span className="label">Operations path</span>
+          <span className="value">Grafana</span>
+          <p className="muted">Prometheus metrics expose throughput, latency, queue depth, failures, and recovery signals.</p>
+        </div>
+      </section>
     </>
   );
 }

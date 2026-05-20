@@ -4,20 +4,26 @@ This guide deploys GitHub Pulse on one low-cost EC2 instance with Docker Compose
 
 ## Deployment Architecture
 
-```text
-GitHub Public Events API
-        ↓
-EC2 instance
-  ├─ github-events-ingestor
-  ├─ github-events-consumer
-  ├─ Next.js operational dashboard
-  ├─ Redpanda single-node Kafka-compatible broker
-  ├─ Redis
-  ├─ PostgreSQL historical analytics
-  ├─ Prometheus + Grafana
-  └─ Caddy reverse proxy
-        ↓
-Realtime + historical API / operational dashboard
+```mermaid
+flowchart TB
+    github[GitHub Public Events API]
+    browser[Browser / operator]
+    ec2[Single EC2 instance]
+    caddy[Caddy reverse proxy]
+    services[Ingestor, consumer, frontend]
+    data[(Redpanda, Redis, PostgreSQL)]
+    obs[(Prometheus, Grafana, exporters)]
+
+    github --> services
+    browser --> caddy
+    caddy --> services
+    caddy --> obs
+    services --> data
+    services --> obs
+    ec2 --> caddy
+    ec2 --> services
+    ec2 --> data
+    ec2 --> obs
 ```
 
 Redpanda replaces the local Apache Kafka container because it keeps Kafka protocol compatibility while reducing single-node operational overhead. The Go producer still uses `KAFKA_BROKERS` and publishes to `github.events.raw.v1`.
@@ -26,13 +32,13 @@ Redpanda replaces the local Apache Kafka container because it keeps Kafka protoc
 
 Approximate monthly cost in `us-east-1`, before free tier or regional differences:
 
-| Resource | Low option | Safer option |
-| --- | ---: | ---: |
-| EC2 `t3.small` | $15-18 | |
-| EC2 `t3.medium` | | $30-35 |
-| 30 GB gp3 EBS | $2.40-3 |
-| Elastic IP while attached | usually $0 |
-| Data transfer | usually low for this phase |
+| Resource                  |                 Low option | Safer option |
+| ------------------------- | -------------------------: | -----------: |
+| EC2 `t3.small`            |                     $15-18 |              |
+| EC2 `t3.medium`           |                            |       $30-35 |
+| 30 GB gp3 EBS             |                    $2.40-3 |
+| Elastic IP while attached |                 usually $0 |
+| Data transfer             | usually low for this phase |
 
 Expected total is about `$18-25/month` on `t3.small` or `$35-45/month` on `t3.medium`. Use `t3.medium` once more consumers, API services, or sustained analytics workloads are added.
 
@@ -49,9 +55,9 @@ Expected total is about `$18-25/month` on `t3.small` or `$35-45/month` on `t3.me
 
 1. Create an EC2 instance:
    - AMI: Ubuntu Server 24.04 LTS or 22.04 LTS
-   - Instance type: `t3.small` for Phase 1, `t3.medium` for headroom
-   - Storage: 30 GB gp3 minimum
-   - IAM role: none required for Phase 1
+   - Instance type: `t3.medium` for the full stack
+   - Storage: 50 GB gp3 recommended, 30 GB minimum for short demos
+   - IAM role: none required for this Compose-based deployment
 
 2. Security group inbound rules:
    - SSH `22` from your IP only
@@ -300,6 +306,8 @@ Expected `t3.small` starting points are roughly 50-250 synthetic events/sec and 
 - Container logs are bounded by Docker log rotation.
 - Docker is enabled on boot.
 - A backup or EBS snapshot exists before major changes.
+
+For the final public launch checklist and recovery runbook, see `docs/production-runbook.md`.
 
 ## Troubleshooting
 

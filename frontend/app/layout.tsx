@@ -3,8 +3,19 @@ import Link from "next/link";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "GitHub Pulse Operations",
-  description: "Operational dashboard for GitHub event streaming analytics.",
+  title: {
+    default: "GitHub Pulse Operations",
+    template: "%s | GitHub Pulse",
+  },
+  description:
+    "Production-style operational dashboard for GitHub event streaming analytics, realtime Redis rankings, PostgreSQL history, and Prometheus/Grafana observability.",
+  metadataBase: new URL("https://github-pulse.local"),
+  openGraph: {
+    title: "GitHub Pulse Operations",
+    description:
+      "Event-driven GitHub analytics platform with Redpanda, Redis, PostgreSQL, Prometheus, Grafana, and SSE dashboards.",
+    type: "website",
+  },
 };
 
 const navItems = [

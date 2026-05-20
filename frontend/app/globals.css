@@ -119,6 +119,10 @@ a {
   font-size: 18px;
 }
 
+.overview-metrics {
+  margin-top: 16px;
+}
+
 .stat {
   display: grid;
   gap: 8px;

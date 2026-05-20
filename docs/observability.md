@@ -4,12 +4,24 @@ Phase 5 adds a single-node observability stack that stays compatible with Docker
 
 ## Architecture
 
-```text
-Go services / exporters / Redpanda / Caddy
-        ↓ scrape
-Prometheus
-        ↓ datasource
-Grafana dashboards
+```mermaid
+flowchart TB
+    go[Go services]
+    redpanda[Redpanda]
+    redis[Redis exporter]
+    postgres[Postgres exporter]
+    kafka[Kafka exporter]
+    caddy[Caddy]
+    prometheus[(Prometheus)]
+    grafana[Grafana]
+
+    go --> prometheus
+    redpanda --> prometheus
+    redis --> prometheus
+    postgres --> prometheus
+    kafka --> prometheus
+    caddy --> prometheus
+    prometheus --> grafana
 ```
 
 Prometheus scrapes:
@@ -45,6 +57,13 @@ open http://localhost/grafana/
 ```
 
 For screenshots, open each dashboard after traffic has flowed for a few minutes and capture the full dashboard view with the time range set to the last hour.
+
+Suggested public portfolio captures:
+
+- System Overview dashboard after `make bench-small`.
+- Performance And Resilience dashboard during `make k6-api`.
+- PostgreSQL Persistence dashboard after bounded replay.
+- Infrastructure Health dashboard after a recovery drill.
 
 ## Prometheus
 
